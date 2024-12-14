@@ -305,17 +305,17 @@ impl App {
 
         let status_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("Status")
+            .title("[1] Status")
             .bg(self.colors.buffer_bg)
             .fg(self.colors.header_bg);
         let inbox_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("Inbox")
+            .title("[2] Inbox")
             .bg(self.colors.buffer_bg)
             .fg(self.colors.header_bg);
         let tags_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("Tags")
+            .title("[3] Tags")
             .bg(self.colors.buffer_bg)
             .fg(self.colors.header_bg);
 
@@ -328,7 +328,7 @@ impl App {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
             .style(Style::default().fg(self.colors.header_bg))
-            .title("Todos");
+            .title("[4] Todos");
         let selected_row_style = Style::default()
             .add_modifier(Modifier::REVERSED)
             .fg(self.colors.selected_row_style_fg);
