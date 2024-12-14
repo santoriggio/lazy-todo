@@ -25,12 +25,9 @@ const PALETTES: [tailwind::Palette; 4] = [
     tailwind::INDIGO,
     tailwind::RED,
 ];
-const INFO_TEXT: [&str; 2] = [
-    "Quit: q | Move up: k | Move down: j",
-    "Add: a | Delete: d | Done: <space>",
-];
+const INFO_TEXT: &str = "Add: a | Delete: d | Done: <space>";
 
-const ITEM_HEIGHT: usize = 1;
+const ITEM_HEIGHT: usize = 2;
 
 fn main() -> Result<()> {
     color_eyre::install()?;
@@ -277,7 +274,7 @@ impl App {
 
     fn draw(&mut self, frame: &mut Frame) {
         let main_vertical =
-            Layout::vertical([Constraint::Percentage(90), Constraint::Min(4)]).split(frame.area());
+            Layout::vertical([Constraint::Percentage(100), Constraint::Min(3)]).split(frame.area());
 
         let horizontal_layout =
             Layout::horizontal([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)])
@@ -305,19 +302,13 @@ impl App {
 
         let status_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[1] Status")
-            .bg(self.colors.buffer_bg)
-            .fg(self.colors.header_bg);
+            .title("[1] Status");
         let inbox_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[2] Inbox")
-            .bg(self.colors.buffer_bg)
-            .fg(self.colors.header_bg);
+            .title("[2] Inbox");
         let tags_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[3] Tags")
-            .bg(self.colors.buffer_bg)
-            .fg(self.colors.header_bg);
+            .title("[3] Tags");
 
         frame.render_widget(status_block, vertical_layout[0]);
         frame.render_widget(inbox_block, vertical_layout[1]);
@@ -327,34 +318,44 @@ impl App {
     fn render_table(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .style(Style::default().fg(self.colors.header_bg))
             .title("[4] Todos");
-        let selected_row_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_row_style_fg);
-        let selected_col_style = Style::default().fg(self.colors.selected_column_style_fg);
-        let selected_cell_style = Style::default()
-            .add_modifier(Modifier::REVERSED)
-            .fg(self.colors.selected_cell_style_fg);
+        let selected_row_style = Style::default().add_modifier(Modifier::REVERSED);
+        let selected_col_style = Style::default();
+        let selected_cell_style = Style::default().add_modifier(Modifier::REVERSED);
 
         let rows = self.items.iter().enumerate().map(|(i, data)| {
             let item = data.ref_array();
             let done_text = if *item.0 == true { "[x]" } else { "[ ]" };
             let text = format!("{}", item.1);
-            Row::new(vec![Cell::from(done_text), Cell::from(text)])
-                .fg(match *item.0 {
-                    true => Color::Blue,
-                    false => Color::default(),
-                })
-                .height(1)
+            Row::new(vec![
+                Cell::from(done_text),
+                Cell::from(text),
+                Cell::from("13-12-2024"),
+            ])
+            .height(ITEM_HEIGHT as u16)
         });
-        let t = Table::new(rows, [Constraint::Length(4), Constraint::Min(1)])
-            .block(block)
-            .row_highlight_style(selected_row_style)
-            .column_highlight_style(selected_col_style)
-            .cell_highlight_style(selected_cell_style)
-            .bg(self.colors.buffer_bg)
-            .highlight_spacing(HighlightSpacing::Always);
+
+        let t = Table::new(
+            rows,
+            [
+                Constraint::Min(3),
+                Constraint::Percentage(100),
+                Constraint::Min(10),
+            ],
+        )
+        .block(block)
+        .header(
+            Row::new(vec!["", "Content", "Date"])
+                .style(Style::new().bold())
+                // To add space between the header and the rest of the rows, specify the margin
+                .bottom_margin(1),
+        )
+        .column_spacing(1)
+        .row_highlight_style(selected_row_style)
+        .column_highlight_style(selected_col_style)
+        .cell_highlight_style(selected_cell_style)
+        .highlight_spacing(HighlightSpacing::Always);
+
         frame.render_stateful_widget(t, area, &mut self.state);
     }
 
@@ -373,18 +374,8 @@ impl App {
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let info_footer = Paragraph::new(Text::from_iter(INFO_TEXT))
-            .style(
-                Style::new()
-                    .fg(self.colors.row_fg)
-                    .bg(self.colors.buffer_bg),
-            )
-            .centered()
-            .block(
-                Block::bordered()
-                    .border_type(BorderType::Double)
-                    .border_style(Style::new().fg(self.colors.footer_border_color)),
-            );
+        let block = Block::bordered().border_type(BorderType::Double);
+        let info_footer = Paragraph::new(INFO_TEXT).block(block).centered();
         frame.render_widget(info_footer, area);
     }
 
