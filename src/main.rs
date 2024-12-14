@@ -3,17 +3,19 @@ use std::{
     io::{Read, Write},
 };
 
+use chrono::{DateTime, Local, TimeZone, Utc};
+
 use serde::{Deserialize, Serialize};
 
-use color_eyre::{eyre::ContextCompat, owo_colors::OwoColorize, Result};
+use color_eyre::{owo_colors::OwoColorize, Result};
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEventKind},
-    layout::{Constraint, Layout, Margin, Position, Rect},
-    style::{self, Color, Modifier, Style, Styled, Stylize},
+    layout::{Alignment, Constraint, Layout, Margin, Position, Rect},
+    style::{self, Color, Modifier, Style, Stylize},
     text::Text,
     widgets::{
-        Block, BorderType, Borders, Cell, HighlightSpacing, Paragraph, Row, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Table, TableState, Wrap,
+        Block, BorderType, Cell, HighlightSpacing, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState, Wrap,
     },
     DefaultTerminal, Frame,
 };
@@ -66,15 +68,23 @@ impl TableColors {
     }
 }
 
+enum AppTabs {
+    Status,
+    Inbox,
+    Tags,
+    Todos,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Data {
     done: bool,
     text: String,
+    created_at: i64,
 }
 
 impl Data {
-    const fn ref_array(&self) -> (&bool, &String) {
-        (&self.done, &self.text)
+    const fn ref_array(&self) -> (&bool, &String, &i64) {
+        (&self.done, &self.text, &self.created_at)
     }
 }
 
@@ -87,6 +97,7 @@ struct App {
     input_visible: bool,
     input: String,
     character_index: usize,
+    current_tab: AppTabs,
 }
 
 impl App {
@@ -101,6 +112,7 @@ impl App {
             input_visible: false,
             input: String::new(),
             character_index: 0,
+            current_tab: AppTabs::Inbox,
         }
     }
     pub fn next_row(&mut self) {
@@ -149,6 +161,7 @@ impl App {
         self.items.push(Data {
             done: false,
             text: self.input.clone(),
+            created_at: Local::now().timestamp_millis(),
         });
         self.input.clear();
         self.reset_cursor();
@@ -232,6 +245,11 @@ impl App {
                             _ => {}
                         },
                         false => match key.code {
+                            KeyCode::Tab => self.toggle_next_tab(),
+                            KeyCode::Char('1') => self.current_tab = AppTabs::Status,
+                            KeyCode::Char('2') => self.current_tab = AppTabs::Inbox,
+                            KeyCode::Char('3') => self.current_tab = AppTabs::Tags,
+                            KeyCode::Char('4') => self.current_tab = AppTabs::Todos,
                             KeyCode::Char('a') => self.toggle_input(),
                             KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                             KeyCode::Char('j') | KeyCode::Down => self.next_row(),
@@ -253,6 +271,15 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    fn toggle_next_tab(&mut self) {
+        match self.current_tab {
+            AppTabs::Status => self.current_tab = AppTabs::Inbox,
+            AppTabs::Inbox => self.current_tab = AppTabs::Tags,
+            AppTabs::Tags => self.current_tab = AppTabs::Todos,
+            AppTabs::Todos => self.current_tab = AppTabs::Status,
         }
     }
 
@@ -302,13 +329,25 @@ impl App {
 
         let status_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[1] Status");
+            .title("[1] Status")
+            .fg(match self.current_tab {
+                AppTabs::Status => Color::Green,
+                _ => Color::default(),
+            });
         let inbox_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[2] Inbox");
+            .title("[2] Inbox")
+            .fg(match self.current_tab {
+                AppTabs::Inbox => Color::Green,
+                _ => Color::default(),
+            });
         let tags_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[3] Tags");
+            .title("[3] Tags")
+            .fg(match self.current_tab {
+                AppTabs::Tags => Color::Green,
+                _ => Color::default(),
+            });
 
         frame.render_widget(status_block, vertical_layout[0]);
         frame.render_widget(inbox_block, vertical_layout[1]);
@@ -318,7 +357,11 @@ impl App {
     fn render_table(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title("[4] Todos");
+            .title("[4] Todos")
+            .fg(match self.current_tab {
+                AppTabs::Todos => Color::Green,
+                _ => Color::default(),
+            });
         let selected_row_style = Style::default().add_modifier(Modifier::REVERSED);
         let selected_col_style = Style::default();
         let selected_cell_style = Style::default().add_modifier(Modifier::REVERSED);
@@ -327,11 +370,18 @@ impl App {
             let item = data.ref_array();
             let done_text = if *item.0 == true { "[x]" } else { "[ ]" };
             let text = format!("{}", item.1);
+
+            let created_at = DateTime::from_timestamp_millis(*item.2);
+            let created_at = match created_at {
+                Some(d) => format!("{}", d.with_timezone(&Local).format("%Y-%m-%d %H:%M")),
+                None => String::from(""),
+            };
             Row::new(vec![
                 Cell::from(done_text),
                 Cell::from(text),
-                Cell::from("13-12-2024"),
+                Cell::from(created_at),
             ])
+            .fg(Color::default())
             .height(ITEM_HEIGHT as u16)
         });
 
@@ -340,15 +390,18 @@ impl App {
             [
                 Constraint::Min(3),
                 Constraint::Percentage(100),
-                Constraint::Min(10),
+                Constraint::Min(17),
             ],
         )
         .block(block)
         .header(
-            Row::new(vec!["", "Content", "Date"])
-                .style(Style::new().bold())
-                // To add space between the header and the rest of the rows, specify the margin
-                .bottom_margin(1),
+            Row::new(vec![
+                Cell::from(""),
+                Cell::from(""),
+                Cell::from(Text::from("Created At").centered().bold()),
+            ])
+            .fg(Color::default())
+            .bottom_margin(1),
         )
         .column_spacing(1)
         .row_highlight_style(selected_row_style)
@@ -387,12 +440,12 @@ impl App {
             width: area.width / 2,
             height: area.height / 3,
         };
+
         let popup = Paragraph::new(Text::from(self.input.as_str()).fg(Color::Gray))
             .wrap(Wrap { trim: true })
             .block(
                 Block::bordered()
                     .title("New Todo")
-                    .fg(Color::Blue)
                     .border_type(BorderType::Rounded),
             );
 
