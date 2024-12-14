@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use color_eyre::{owo_colors::OwoColorize, Result};
+use color_eyre::{eyre::ContextCompat, owo_colors::OwoColorize, Result};
 use ratatui::{
     crossterm::event::{self, Event, KeyCode, KeyEventKind},
     layout::{Constraint, Layout, Margin, Position, Rect},
@@ -27,7 +27,7 @@ const PALETTES: [tailwind::Palette; 4] = [
 ];
 const INFO_TEXT: [&str; 2] = [
     "Quit: q | Move up: k | Move down: j",
-    "Add: a | Done: <space>",
+    "Add: a | Delete: d | Done: <space>",
 ];
 
 const ITEM_HEIGHT: usize = 1;
@@ -239,6 +239,11 @@ impl App {
                             KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
                             KeyCode::Char('j') | KeyCode::Down => self.next_row(),
                             KeyCode::Char('k') | KeyCode::Up => self.previous_row(),
+                            KeyCode::Char('d') => {
+                                if let Some(idx) = self.state.selected() {
+                                    self.delete_todo(idx);
+                                }
+                            }
                             KeyCode::Char(' ') => {
                                 if let Some(idx) = self.state.selected() {
                                     self.toggle_todo(idx);
@@ -261,29 +266,69 @@ impl App {
         }
     }
 
+    fn delete_todo(&mut self, idx: usize) {
+        self.items.remove(idx);
+        let _ = save_to_file(&self.items, ".lazytodo/todos");
+    }
+
     fn toggle_input(&mut self) {
         self.input_visible = !self.input_visible
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        let vertical = &Layout::vertical([Constraint::Min(5), Constraint::Length(4)]);
-        let rects = vertical.split(frame.area());
+        let main_vertical =
+            Layout::vertical([Constraint::Percentage(90), Constraint::Min(4)]).split(frame.area());
+
+        let horizontal_layout =
+            Layout::horizontal([Constraint::Ratio(1, 3), Constraint::Ratio(2, 3)])
+                .split(main_vertical[0]);
 
         self.set_colors();
 
-        self.render_table(frame, rects[0]);
-        self.render_scrollbar(frame, rects[0]);
-        self.render_footer(frame, rects[1]);
+        self.render_drawer(frame, horizontal_layout[0]);
+        self.render_table(frame, horizontal_layout[1]);
+        self.render_scrollbar(frame, horizontal_layout[1]);
+        self.render_footer(frame, main_vertical[1]);
 
         if self.input_visible {
             self.render_input(frame);
         }
     }
 
+    fn render_drawer(&mut self, frame: &mut Frame, area: Rect) {
+        let vertical_layout = Layout::vertical([
+            Constraint::Min(4),
+            Constraint::Percentage(40),
+            Constraint::Percentage(40),
+        ])
+        .split(area);
+
+        let status_block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title("Status")
+            .bg(self.colors.buffer_bg)
+            .fg(self.colors.header_bg);
+        let inbox_block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title("Inbox")
+            .bg(self.colors.buffer_bg)
+            .fg(self.colors.header_bg);
+        let tags_block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title("Tags")
+            .bg(self.colors.buffer_bg)
+            .fg(self.colors.header_bg);
+
+        frame.render_widget(status_block, vertical_layout[0]);
+        frame.render_widget(inbox_block, vertical_layout[1]);
+        frame.render_widget(tags_block, vertical_layout[2]);
+    }
+
     fn render_table(&mut self, frame: &mut Frame, area: Rect) {
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .style(Style::default().fg(self.colors.header_bg));
+            .style(Style::default().fg(self.colors.header_bg))
+            .title("Todos");
         let selected_row_style = Style::default()
             .add_modifier(Modifier::REVERSED)
             .fg(self.colors.selected_row_style_fg);
